@@ -153,7 +153,7 @@ fi
 ARCH=${ARCH:-"x86_64"}
 if [[ -z ${PULL_SECRET_PATH} ]]
 then
-  PULL_SECRET_PATH=$(find ~ -name "pull-secret")
+  PULL_SECRET_PATH=$(find ~ -maxdepth 2 \( -type f -or -type l \) -name "pull-secret" 2>/dev/null | head -1)
   if [[ -z ${PULL_SECRET_PATH} ]]
   then
     echo "ERR: No Pull secret specified"
