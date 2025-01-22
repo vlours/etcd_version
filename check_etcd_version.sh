@@ -94,6 +94,7 @@ MINOR=()
 RELEASE=()
 IMAGES_LIST=()
 CHANNEL_URL=${CHANNEL_URL:-"https://raw.githubusercontent.com/openshift/cincinnati-graph-data/refs/heads/master/internal-channels/fast.yaml"}
+RC=0
 
 # Retrieve the options
 if [[ $# != 0 ]]
@@ -192,3 +193,5 @@ then
   echo -e "\n\n===== Cleaning the images ====="
   podman rmi ${IMAGES_LIST[*]}
 fi
+
+exit $RC
