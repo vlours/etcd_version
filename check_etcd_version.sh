@@ -186,6 +186,6 @@ done
 # Clean the images if required.
 if [[ "${CLEAN_IMAGES}" == "true" ]] && [[ ! -z ${IMAGES_LIST} ]]
 then
-  echo -e "\nCleaning the images"
+  echo -e "\n\n===== Cleaning the images ====="
   podman rmi ${IMAGES_LIST[*]}
 fi
