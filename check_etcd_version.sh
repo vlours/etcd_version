@@ -62,7 +62,6 @@ fct_retrieve_etcd_version() {
     else
       RC=$[RC + 10]
     fi
-    fi
   else
     IMAGES_LIST+=(${osImageURL})
     ETCD_VERSION=$(podman run --rm --entrypoint '["/usr/bin/etcd","--version"]' ${osImageURL} 2>/dev/null | awk '{if ($1 == "etcd"){print $NF}}')
