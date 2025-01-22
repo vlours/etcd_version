@@ -59,6 +59,9 @@ fct_retrieve_etcd_version() {
     if [[ ${REP} != "y" ]] && [[ ${REP} != "Y" ]]
     then
       exit 10
+    else
+      RC=$[RC + 10]
+    fi
     fi
   else
     IMAGES_LIST+=(${osImageURL})
