@@ -2,7 +2,7 @@
 ##################################################################
 # Script       # check_etcd_version.sh
 # Description  # Retreive the ETCD version for the RHOCP releases
-# @VERSION     # 0.1.0
+# @VERSION     # 0.1.1
 ##################################################################
 # Changelog.md # List the modifications in the script.
 # README.md    # Describes the repository usage
@@ -15,19 +15,20 @@ fct_help(){
   then
     ScriptName=$(basename $0)
   fi
-  echo -e "usage: ${cyantext}${ScriptName} [-a <Arch>] [-r <release>] [-m <minor_version>] [-p <pull-secret>] [-kc] ${purpletext}[-h]${resetcolor}"
+  echo -e "usage: ${cyantext}${ScriptName} -r <release> | -m <minor_version> [-p <pull-secret>] [-a <Arch>] [-kcy] ${purpletext}[-h]${resetcolor}"
   OPTION_TAB=8
   DESCR_TAB=63
   DEFAULTS_TAB=31
   printf "|%${OPTION_TAB}s---%-${DESCR_TAB}s---%-${DEFAULTS_TAB}s|\n" |tr \  '-'
   printf "|%${OPTION_TAB}s | %-${DESCR_TAB}s | %-${DEFAULTS_TAB}s|\n" "Options" "Description" "[Defaults]"
   printf "|%${OPTION_TAB}s | %-${DESCR_TAB}s | %-${DEFAULTS_TAB}s|\n" |tr \  '-'
-  printf "|${cyantext}%${OPTION_TAB}s${resetcolor} | %-${DESCR_TAB}s | ${greentext}%-${DEFAULTS_TAB}s${resetcolor}|\n" "-a" "Architecture used to check the image" "x86_64"
   printf "|${cyantext}%${OPTION_TAB}s${resetcolor} | %-${DESCR_TAB}s | ${greentext}%-${DEFAULTS_TAB}s${resetcolor}|\n" "-r" "List of release version(s) to check" ""
   printf "|${cyantext}%${OPTION_TAB}s${resetcolor} | %-${DESCR_TAB}s | ${greentext}%-${DEFAULTS_TAB}s${resetcolor}|\n" "-m" "List of minor version(s) to check" ""
   printf "|${cyantext}%${OPTION_TAB}s${resetcolor} | %-${DESCR_TAB}s | ${greentext}%-${DEFAULTS_TAB}s${resetcolor}|\n" "-p" "Path of the pull-secret file" "local 'pull-secret' from \$HOME"
+  printf "|${cyantext}%${OPTION_TAB}s${resetcolor} | %-${DESCR_TAB}s | ${greentext}%-${DEFAULTS_TAB}s${resetcolor}|\n" "-a" "Architecture used to check the image" "x86_64"
   printf "|${cyantext}%${OPTION_TAB}s${resetcolor} | %-${DESCR_TAB}s | ${greentext}%-${DEFAULTS_TAB}s${resetcolor}|\n" "-k" "Display the output as KCS format" "false"
   printf "|${cyantext}%${OPTION_TAB}s${resetcolor} | %-${DESCR_TAB}s | ${greentext}%-${DEFAULTS_TAB}s${resetcolor}|\n" "-c" "Clear the images" "false"
+  printf "|${cyantext}%${OPTION_TAB}s${resetcolor} | %-${DESCR_TAB}s | ${greentext}%-${DEFAULTS_TAB}s${resetcolor}|\n" "-y" "Automatically retry/continue if 'podman pull' failed" "false"
   printf "|%${OPTION_TAB}s-|-%-${DESCR_TAB}s-|-%-${DEFAULTS_TAB}s|\n" |tr \  '-'
   printf "|%${OPTION_TAB}s | %-${DESCR_TAB}s | %-${DEFAULTS_TAB}s|\n" "" "Additional Options:" ""
   printf "|%${OPTION_TAB}s-|-%-${DESCR_TAB}s-|-%-${DEFAULTS_TAB}s|\n" |tr \  '-'
@@ -43,24 +44,66 @@ fct_help(){
   echo -e "\nCurrent Version:\t${VERSION}"
 }
 
+fct_spinning() {
+PID=$1
+spin='-\|/'
+
+i=0
+while kill -0 $PID 2>/dev/null
+do
+  i=$(( (i+1) %4 ))
+  printf "\b${spin:$i:1}"
+  sleep .1
+done
+printf "\b"
+}
+
 fct_retrieve_etcd_version() {
   VERSION=$1
+  RETRY=${2:-0}
   osImageURL=$(oc adm release info quay.io/openshift-release-dev/ocp-release:${VERSION}-${ARCH} -o json | jq -r '.references.spec.tags[] | select(.name == "etcd")| .from.name')
   if [[ ${KCS_FORMAT} != "true" ]]
   then
-    printf "ETCD version for release: ${VERSION} (using the image ${osImageURL}): "
+    printf "ETCD version for release: ${VERSION} (using the image ${osImageURL}):  "
   fi
-  podman pull --authfile=${PULL_SECRET_PATH} ${osImageURL} >/dev/null 2>&1
-  if [[ $? != 0 ]]
+  podman pull --authfile=${PULL_SECRET_PATH} ${osImageURL} >/dev/null 2>&1 &
+  PID=$!
+  if [[ ${KCS_FORMAT} != "true" ]]
+  then
+    fct_spinning ${PID}
+  fi
+  wait ${PID}
+  WAIT_RC=$?
+  sleep .5
+  if [[ ${WAIT_RC} != 0 ]]
   then
     echo -e "${redtext}ERR: failed to pull the image ${osImageURL} for the release ${VERSION}${resetcolor}"
-    printf "Do you want to continue? [y/n] "
-    read REP
-    if [[ ${REP} != "y" ]] && [[ ${REP} != "Y" ]]
+    if [[ "$CONTINUE" == "true" ]]
     then
-      exit 10
+      if [[ ${RETRY} < ${MAX_RETRY} ]]
+      then
+        echo "Retrying ... $[RETRY + 1]/${MAX_RETRY}"
+        fct_retrieve_etcd_version $VERSION $[RETRY + 1]
+      else
+        echo "Continuing ..."
+        RC=$[RC + 10]
+      fi
     else
-      RC=$[RC + 10]
+      printf "Do you want to continue? [y/n] "
+      read REP
+      if [[ ${REP} != "y" ]] && [[ ${REP} != "Y" ]]
+      then
+        exit 10
+      else
+        if [[ ${RETRY} < ${MAX_RETRY} ]]
+        then
+          echo "Retrying ... $[RETRY + 1]/${MAX_RETRY}"
+          fct_retrieve_etcd_version $VERSION $[RETRY + 1]
+        else
+          echo "Continuing ..."
+          RC=$[RC + 10]
+        fi
+      fi
     fi
   else
     IMAGES_LIST+=(${osImageURL})
@@ -92,8 +135,20 @@ fct_retrieve_etcd_version() {
 MINOR=()
 RELEASE=()
 IMAGES_LIST=()
-CHANNEL_URL=${CHANNEL_URL:-"https://raw.githubusercontent.com/openshift/cincinnati-graph-data/refs/heads/master/internal-channels/fast.yaml"}
+CHANNEL_NAME=${CHANNEL_NAME:-"fast"}
+CHANNEL_URL=${CHANNEL_URL:-"https://raw.githubusercontent.com/openshift/cincinnati-graph-data/refs/heads/master/internal-channels/${CHANNEL_NAME}.yaml"}
 RC=0
+MAX_RETRY=${MAX_RETRY:-2}
+
+# Check command dependencies
+for check_path in podman oc jq yq
+do
+  if [[ ! -f $(which ${check_path} 2>${STD_ERR} | awk '{print $NF}') ]]
+  then
+    echo -e "${check_path}: command not found!\nPlease refer to the README for depedencies and/or check your \$PATH"
+    exit 2
+  fi
+done
 
 # Retrieve the options
 if [[ $# != 0 ]]
@@ -104,7 +159,7 @@ then
     echo -e "Invalid option: ${1}\n"
     fct_help && exit 1
   fi
-  while getopts :a:m:r:p:ckh arg; do
+  while getopts :a:m:r:p:ckyh arg; do
     case $arg in
       a)
         ARCH=${OPTARG}
@@ -113,7 +168,7 @@ then
         MINOR_LIST+=($(echo ${OPTARG} | sed -e "s/,/ /g"))
         if [[ -z ${AVAILABLE_RELEASE_LIST} ]]
         then
-          AVAILABLE_RELEASE_LIST=$(curl -kLs ${CHANNEL_URL} 2>/dev/null | yq -r '.versions' 2>/dev/null)
+          AVAILABLE_RELEASE_LIST=$(curl -kLs ${CHANNEL_URL} 2>/dev/null | yq -r '.versions' -o json 2>/dev/null)
           if [[ -z ${AVAILABLE_RELEASE_LIST} ]]
           then
             echo -e "${yellowtext}WARN: Unable to download the Minor Version list.${resetcolor}"
@@ -134,6 +189,9 @@ then
         ;;
       c)
         CLEAN_IMAGES="true"
+        ;;
+      y)
+        CONTINUE="true"
         ;;
       h)
         fct_help && exit 0
@@ -167,17 +225,10 @@ then
   fi
 fi
 
-# Check if podman is available
-if [[ ! -f $(which podman 2>${STD_ERR}) ]]
-then
-  echo -e "podman: command not found!\nPlease check your PATH"
-  exit 2
-fi
-
 # Retrieve the Releases from the desired Minor Versions.
 for MINOR_VERSION in ${MINOR_LIST[*]}
 do
-  RELEASE_LIST+=($(echo ${AVAILABLE_RELEASE_LIST} | jq -r --arg minor $MINOR_VERSION '. | to_entries[] | select(.value | startswith($minor)) | .value'))
+  RELEASE_LIST+=($(echo ${AVAILABLE_RELEASE_LIST} | jq -r --arg minor $(echo ${MINOR_VERSION} | cut -d'.' -f1,2) '. | to_entries[] | select(.value | startswith($minor)) | .value'))
 done
 
 # Reoarder the version for easy management.

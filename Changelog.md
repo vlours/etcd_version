@@ -12,6 +12,19 @@
 
 --------
 
+## Version 0.1.1
+
+### Minor updates - 0.1.1
+
+- None
+
+### Release updates - 0.1.1
+
+- Adding retry and an option to automatically continue the script.
+- Adding a spinning wheel while running the 'podman pull' command.
+
+--------
+
 ## Version 0.1.0
 
 ### Minor updates - 0.1.0
