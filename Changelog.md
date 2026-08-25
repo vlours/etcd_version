@@ -12,6 +12,20 @@
 
 --------
 
+## Version 0.1.2
+
+### Minor updates - 0.1.2
+
+- None
+
+### Release updates - 0.1.2
+
+- Rewritten the retry way in the fct_retrieve_etcd_version function.
+- Reduce warm/err output lines when the KCS format is required.
+- Fixed basic syntax pointed by shellcheck
+
+--------
+
 ## Version 0.1.1
 
 ### Minor updates - 0.1.1
